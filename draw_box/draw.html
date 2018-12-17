@@ -1,0 +1,392 @@
+<!DOCTYPE HTML>
+<html>
+<head>
+    <style>
+        html,
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            width: 100%;
+            height: 100%;
+        }
+
+        .container {
+            width: 1512px;
+            height: 2016px;
+            top: 0px;
+            left: 0px;
+            
+            background-repeat: no-repeat;
+            background-size: contain;
+            z-index: 0;
+        }
+
+        canvas {
+            width: 1512px;
+            height: 2016px;
+            top: 0px;
+            left: 0px;
+            position: absolute;
+            z-index: 1;
+        }
+
+        .buttons {
+            left: 0px;
+            top: 2016px;
+            position: fixed;
+        }
+
+        button {
+            width: 1344px;
+            height: 200px;
+            font-size: 48px;
+        }
+
+        .container2 {
+            width: 1512px;
+            height: 2016px;
+            top: 0px;
+            left: 1512px;
+            position: fixed;
+            z-index: 0;
+        }
+    </style>
+    <script src="https://d3js.org/d3.v2.js"></script>
+
+</head>
+
+<body>
+    <div class="container">
+        <canvas id="canvas" width="1512px" height="2016px"></canvas>
+    </div>
+    <div class="container2">
+        <canvas id="cropcanvas" width="1512px" height="2016px"></canvas>
+    </div>
+    <div class="buttons">
+        <button id="crop">Show Cropped</button>
+        <button id="clear">Clear</button> 
+        <button id="next">Next</button>
+    </div>
+    <script>
+        var canvas = document.getElementById('canvas'),
+            ctx = canvas.getContext('2d'),
+            // right cropped canvas
+            ctx2 = document.getElementById('cropcanvas').getContext('2d'),
+            rect = {},
+            drag = false,
+            mouseX,
+            mouseY,
+            closeEnough = 30,
+            dragTL = dragBL = dragTR = dragBR = dragT = dragB = dragR = dragL = false;
+        var crop = document.getElementById("crop")
+        var clear = document.getElementById("clear")
+        var next = document.getElementById("next")
+        function init() {
+            canvas.addEventListener('mousedown', mouseDown, false);
+            canvas.addEventListener('mouseup', mouseUp, false);
+            canvas.addEventListener('mousemove', mouseMove, false);
+            crop.addEventListener("click", cropImage, false)
+            clear.addEventListener("click", clearImage, false)
+            next.addEventListener("click", nextImage, false)
+
+
+        d3.csv("list.txt", function(file) {
+            file.forEach(element => {
+                file_list.push(element.file)
+                
+            });
+            nextImage()
+})
+        }
+
+
+
+fileLink = ""
+index = 0
+
+file_list = []
+
+
+function download(data, filename, type) {
+    var file = new Blob([data], {type: type});
+    if (window.navigator.msSaveOrOpenBlob) // IE10+
+        window.navigator.msSaveOrOpenBlob(file, filename);
+    else { // Others
+        var a = document.createElement("a"),
+                url = URL.createObjectURL(file);
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        setTimeout(function() {
+            document.body.removeChild(a);
+            window.URL.revokeObjectURL(url);  
+        }, 0); 
+    }
+}
+
+function dataURLtoBlob(dataurl) {
+    var arr = dataurl.split(','), mime = arr[0].match(/:(.*?);/)[1],
+        bstr = atob(arr[1]), n = bstr.length, u8arr = new Uint8Array(n);
+    while(n--){
+        u8arr[n] = bstr.charCodeAt(n);
+    }
+    return new Blob([u8arr], {type:mime});
+}
+
+var downloadCanvas =    function(){
+    var link = document.createElement("a");
+      var imgData = document.getElementById('cropcanvas').toDataURL({    format: 'png',
+        multiplier: 4});
+      var strDataURI = imgData.substr(22, imgData.length);
+      var blob = dataURLtoBlob(imgData);
+      var objurl = URL.createObjectURL(blob);
+
+      link.download = fileLink.replace('image/', '').replace('.jpg', '.png');
+
+      link.href = objurl;
+
+     link.click();
+
+} 
+
+function nextImage() {
+if (index != 0) 
+{
+    text = fileLink.replace('image/', '').replace('.jpg', '.txt')
+
+
+var test_array = [rect.startX, rect.startY, rect.w, rect.h].join(",");
+download(test_array, text, '.txt')
+downloadCanvas()
+
+}
+
+
+    clearImage()
+
+    fileLink = "image/" + file_list[index] + ".jpg"
+
+    d3.select('.container').style('background-image', 'url("'+ fileLink + '")')
+    index += 1
+
+
+
+}
+
+
+        // Clears right cropped canvas
+        function clearImage() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height)
+            ctx2.clearRect(0, 0, canvas.width, canvas.height)
+            rect = {}
+        }
+
+        function cropImage() {
+            ctx2.clearRect(0, 0, canvas.width, canvas.height)
+
+            var imageObj = new Image();
+
+            imageObj.src = fileLink
+
+            h = imageObj.naturalHeight
+            w = imageObj.naturalWidth
+
+            console.log(h)
+            console.log(w)
+
+
+            imageObj.onload = function () {
+                // draw cropped image
+                var sourceX = rect.startX * 2;
+                var sourceY = rect.startY* 2;
+                var sourceWidth = rect.w* 2;
+                var sourceHeight = rect.h* 2;
+
+                var destWidth = sourceWidth;
+                var destHeight = sourceHeight;
+                var destX = 0;
+                var destY = 0;
+
+                ctx2.drawImage(imageObj, sourceX, sourceY, sourceWidth, sourceHeight, destX, destY, destWidth, destHeight);
+            };
+            
+
+            
+        }
+
+        function mouseDown(e) {
+            mouseX = e.pageX - this.offsetLeft;
+            mouseY = e.pageY - this.offsetTop;
+
+            // 4 cases:
+            // 1. top left
+            if (checkCloseEnough(mouseX, rect.startX) && checkCloseEnough(mouseY, rect.startY)) {
+                dragTL = true;
+            }
+            // 2. top right
+            else if (checkCloseEnough(mouseX, rect.startX + rect.w) && checkCloseEnough(mouseY, rect.startY)) {
+                dragTR = true;
+
+            }
+            // 3. bottom left
+            else if (checkCloseEnough(mouseX, rect.startX) && checkCloseEnough(mouseY, rect.startY + rect.h)) {
+                dragBL = true;
+
+            }
+            // 4. bottom right
+            else if (checkCloseEnough(mouseX, rect.startX + rect.w) && checkCloseEnough(mouseY, rect.startY + rect.h)) {
+                dragBR = true;
+
+            }
+            else if (checkCloseEnough(mouseX, rect.startX) && checkCloseEnough(mouseY, rect.startY + rect.h / 2)) {
+                dragL = true
+            }
+
+            else if (checkCloseEnough(mouseX, rect.startX + rect.w) && checkCloseEnough(mouseY, rect.startY + rect.h / 2)) {
+                dragR = true
+            }
+
+            else if (checkCloseEnough(mouseX, rect.startX + rect.w / 2) && checkCloseEnough(mouseY, rect.startY)) {
+                dragT = true
+            }
+
+            else if (checkCloseEnough(mouseX, rect.startX + rect.w / 2) && checkCloseEnough(mouseY, rect.startY + rect.h)) {
+                dragB = true
+            }
+            // (5.) none of them
+            else {
+                // handle not resizing
+                rect.startX = e.pageX - this.offsetLeft;
+                rect.startY = e.pageY - this.offsetTop;
+                drag = true;
+            }
+
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            draw();
+
+        }
+
+        function checkCloseEnough(p1, p2) {
+            return Math.abs(p1 - p2) < closeEnough;
+        }
+
+        function mouseUp() {
+            dragTL = dragBL = dragTR = dragBR = dragT = dragB = dragR = dragL = drag = false;
+        }
+
+        function mouseMove(e) {
+            mouseX = e.pageX - this.offsetLeft;
+            mouseY = e.pageY - this.offsetTop;
+            if (dragTL) {
+                rect.w += rect.startX - mouseX;
+                rect.h += rect.startY - mouseY;
+                rect.startX = mouseX;
+                rect.startY = mouseY;
+            } else if (dragTR) {
+                rect.w = Math.abs(rect.startX - mouseX);
+                rect.h += rect.startY - mouseY;
+                rect.startY = mouseY;
+            } else if (dragBL) {
+                rect.w += rect.startX - mouseX;
+                rect.h = Math.abs(rect.startY - mouseY);
+                rect.startX = mouseX;
+            } else if (dragBR) {
+                rect.w = Math.abs(rect.startX - mouseX);
+                rect.h = Math.abs(rect.startY - mouseY);
+            }
+            else if (dragL) {
+                rect.w += rect.startX - mouseX;
+                rect.startX = mouseX;
+            }
+            else if (dragR) {
+                rect.w = Math.abs(rect.startX - mouseX);
+            }
+            else if (dragT) {
+                rect.h += rect.startY - mouseY;
+                rect.startY = mouseY;
+
+            }
+            else if (dragB) {
+                rect.h = Math.abs(rect.startY - mouseY);
+
+            }
+            else if (drag) {
+                rect.w = (e.pageX - this.offsetLeft) - rect.startX;
+                rect.h = (e.pageY - this.offsetTop) - rect.startY;
+
+            }
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            draw();
+        }
+
+        function draw() {
+            ctx.fillStyle = "#222222";
+            ctx.globalAlpha = 0.7
+            ctx.fillRect(rect.startX, rect.startY, rect.w, rect.h);
+
+            //DRAW THIRDS
+
+            ctx.beginPath();
+            ctx.moveTo(rect.startX + 1 / 3 * rect.w, rect.startY);
+            ctx.lineTo(rect.startX + 1 / 3 * rect.w, rect.startY + rect.h);
+            ctx.strokeStyle = "#FF0000";
+            ctx.lineWidth = 5;
+            ctx.stroke();
+
+
+            ctx.beginPath();
+            ctx.moveTo(rect.startX + 2 / 3 * rect.w, rect.startY);
+            ctx.lineTo(rect.startX + 2 / 3 * rect.w, rect.startY + rect.h);
+            ctx.strokeStyle = "#FF0000";
+            ctx.lineWidth = 5;
+            ctx.stroke();
+
+
+            ctx.beginPath();
+            ctx.moveTo(rect.startX, rect.startY + 1 / 3 * rect.h);
+            ctx.lineTo(rect.startX + rect.w, rect.startY + 1 / 3 * rect.h);
+            ctx.strokeStyle = "#FF0000";
+            ctx.lineWidth = 5;
+            ctx.stroke();
+
+            ctx.beginPath();
+            ctx.moveTo(rect.startX, rect.startY + 2 / 3 * rect.h);
+            ctx.lineTo(rect.startX + rect.w, rect.startY + 2 / 3 * rect.h);
+            ctx.strokeStyle = "#FF0000";
+            ctx.lineWidth = 5;
+            ctx.stroke();
+
+
+            ctx.globalAlpha = 1.0
+            drawHandles();
+        }
+
+     
+
+        function drawCircle(x, y, radius) {
+            ctx.fillStyle = "#FF0000";
+            ctx.beginPath();
+            ctx.arc(x, y, radius, 0, 2 * Math.PI);
+            ctx.fill();
+        }
+
+        function drawHandles() {
+            drawCircle(rect.startX, rect.startY, closeEnough);
+            drawCircle(rect.startX + rect.w, rect.startY, closeEnough);
+            drawCircle(rect.startX + rect.w, rect.startY + rect.h, closeEnough);
+            drawCircle(rect.startX, rect.startY + rect.h, closeEnough);
+
+            drawCircle(rect.startX, rect.startY + rect.h / 2, closeEnough);
+            drawCircle(rect.startX + rect.w, rect.startY + rect.h / 2, closeEnough);
+
+            drawCircle(rect.startX + rect.w / 2, rect.startY, closeEnough);
+            drawCircle(rect.startX + rect.w / 2, rect.startY + rect.h, closeEnough);
+        }
+
+        init();
+    </script>
+</body>
+
+</html>
